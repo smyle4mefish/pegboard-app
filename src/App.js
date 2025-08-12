@@ -1,43 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Move } from 'lucide-react';
-
-// Mock Firebase functions - REPLACE WITH REAL FIREBASE
-const mockFirebase = {
-  posts: new Map(),
-  listeners: new Set(),
-
-  addPost: (post) => {
-    const id = Date.now().toString();
-    mockFirebase.posts.set(id, { ...post, id, createdAt: new Date() });
-    mockFirebase.notifyListeners();
-    return id;
-  },
-
-  updatePost: (id, updates) => {
-    const post = mockFirebase.posts.get(id);
-    if (post) {
-      mockFirebase.posts.set(id, { ...post, ...updates });
-      mockFirebase.notifyListeners();
-    }
-  },
-
-  deletePost: (id) => {
-    mockFirebase.posts.delete(id);
-    mockFirebase.notifyListeners();
-  },
-
-  getPosts: () => Array.from(mockFirebase.posts.values()),
-
-  onPostsChange: (callback) => {
-    mockFirebase.listeners.add(callback);
-    return () => mockFirebase.listeners.delete(callback);
-  },
-
-  notifyListeners: () => {
-    const posts = Array.from(mockFirebase.posts.values());
-    mockFirebase.listeners.forEach(callback => callback(posts));
-  }
-};
+import { firebaseService } from './firebase';
 
 const colors = [
   { name: 'Light Blue', value: '#B3E5FC', border: '#81D4FA' },
@@ -254,7 +217,7 @@ const PegBoard = () => {
   const currentUserId = useRef(Math.random().toString(36).substr(2, 9)).current;
 
   useEffect(() => {
-    const unsubscribe = mockFirebase.onPostsChange((newPosts) => {
+    const unsubscribe = firebaseService.onPostsChange((newPosts) => {
       setPosts(newPosts);
     });
     return unsubscribe;
@@ -317,7 +280,7 @@ const PegBoard = () => {
   const handlePost = () => {
     if (newPostText.trim()) {
       const position = getRandomPosition();
-      mockFirebase.addPost({
+      firebaseService.addPost({
         text: newPostText,
         color: newPostColor,
         position,
@@ -331,11 +294,11 @@ const PegBoard = () => {
   };
 
   const handleDeletePost = (id) => {
-    mockFirebase.deletePost(id);
+    firebaseService.deletePost(id);
   };
 
   const handleMovePost = (id, newPosition) => {
-    mockFirebase.updatePost(id, { position: newPosition });
+    firebaseService.updatePost(id, { position: newPosition });
   };
 
   const handleCreateNewPost = () => {
@@ -446,11 +409,11 @@ const PegBoard = () => {
             </div>
         )}
 
-        {/* Instructions for collaboration */}
+        {/* Success message for collaboration */}
         {hasPostedOnce && (
-            <div className="fixed top-4 right-4 bg-yellow-100 border-l-4 border-yellow-500 p-3 rounded shadow-lg text-sm max-w-xs z-40">
-              <p className="font-semibold text-yellow-800">Note:</p>
-              <p className="text-yellow-700">Real-time collaboration requires Firebase setup. Currently using local storage only.</p>
+            <div className="fixed top-4 right-4 bg-green-100 border-l-4 border-green-500 p-3 rounded shadow-lg text-sm max-w-xs z-40">
+              <p className="font-semibold text-green-800">🎉 Live Collaboration!</p>
+              <p className="text-green-700">Everyone can now see each other's post-its in real-time!</p>
             </div>
         )}
       </div>
