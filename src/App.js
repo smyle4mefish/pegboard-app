@@ -71,6 +71,7 @@ const PostIt = ({
   const handleMouseDown = (e) => {
     if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
       e.preventDefault();
+      e.stopPropagation(); // Stop the event from bubbling to the board
       setIsMoving(true);
       const rect = postItRef.current.getBoundingClientRect();
       setDragOffset({
@@ -83,6 +84,7 @@ const PostIt = ({
   const handleTouchStart = (e) => {
     if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
       e.preventDefault();
+      e.stopPropagation(); // Stop the event from bubbling to the board
       setIsMoving(true);
       const touch = e.touches[0];
       const rect = postItRef.current.getBoundingClientRect();
@@ -131,10 +133,12 @@ const PostIt = ({
   return (
       <div
           ref={postItRef}
+          data-postit="true"
           className={`
         relative rounded-xl shadow-lg transform transition-all duration-300 select-none
         ${isDragging || isMoving ? 'scale-105 shadow-2xl z-50' : 'hover:scale-102 hover:shadow-xl'}
         ${isMoving ? 'cursor-grabbing' : (isEditing ? 'cursor-text' : 'cursor-pointer')}
+
       `}
           style={{
             backgroundColor: selectedColor.value,
@@ -151,7 +155,10 @@ const PostIt = ({
           }}
           onMouseDown={!isEditing ? handleMouseDown : undefined}
           onTouchStart={!isEditing ? handleTouchStart : undefined}
-          onClick={!isEditing && !isMoving && onClick ? () => onClick() : undefined}
+          onClick={!isEditing && !isMoving && onClick ? (e) => {
+            e.stopPropagation(); // Prevent board panning when clicking to view
+            onClick();
+          } : undefined}
       >
         {/* Color picker circles - only show when editing */}
         {isEditing && (
@@ -294,7 +301,9 @@ const PegBoard = () => {
   };
 
   const handlePanStart = (e) => {
-    if (e.target === boardRef.current || e.target.closest('.board-background')) {
+    // Only start panning if the touch/click is directly on the board background, not on a post-it
+    if ((e.target === boardRef.current || e.target.closest('.board-background')) &&
+        !e.target.closest('[data-postit]')) {
       setIsPanning(true);
       const clientX = e.clientX || (e.touches && e.touches[0].clientX);
       const clientY = e.clientY || (e.touches && e.touches[0].clientY);
