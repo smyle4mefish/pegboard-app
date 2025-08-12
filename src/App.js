@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Move } from 'lucide-react';
 import { firebaseService } from './firebase';
 
@@ -10,143 +10,122 @@ const colors = [
   { name: 'Orange', value: '#FFCC80', border: '#FFB74D' }
 ];
 
-const EDIT_W = 320;
-const EDIT_H = 380;
-const NOTE_W = 220;
-const NOTE_H = 260;
-
-/* ------------------- PostIt ------------------- */
-function PostIt({
+const PostIt = ({
                   text,
                   setText,
                   color,
                   setColor,
                   onPost,
+                  onClose,
                   isEditing = true,
                   onDelete,
-                  position,          // {x,y} in board coords for pinned notes
+                  position,
                   onMove,
                   onClick,
                   isDragging = false,
                   authorId,
-                  isInitial = false,
-                  scale = 1,
-                  currentUserId
-                }) {
+                  isInitial = false
+                }) => {
   const [isMoving, setIsMoving] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 }); // in board coords
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const postItRef = useRef(null);
-
-  const getScrollContainer = () => document.querySelector('.board-scroll-container');
-  const getBoardEl = () => document.querySelector('.board-inner');
-
-  const startDrag = (clientX, clientY) => {
-    if (isEditing || !onMove) return;
-    const sc = getScrollContainer();
-    const boardEl = getBoardEl();
-    if (!sc || !boardEl) return;
-
-    const rect = boardEl.getBoundingClientRect();
-    const pointerBoardX = (clientX - rect.left + sc.scrollLeft) / scale;
-    const pointerBoardY = (clientY - rect.top + sc.scrollTop) / scale;
-    const noteX = position?.x || 0;
-    const noteY = position?.y || 0;
-
-    setDragOffset({ x: pointerBoardX - noteX, y: pointerBoardY - noteY });
-    setIsMoving(true);
-  };
+  const currentUserId = useRef(Math.random().toString(36).substr(2, 9)).current;
 
   const handleMouseDown = (e) => {
-    if (!isEditing && onMove && !(e.target.closest && e.target.closest('.delete-btn'))) {
+    if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
       e.preventDefault();
       e.stopPropagation();
-      startDrag(e.clientX, e.clientY);
+      setIsMoving(true);
+      const rect = postItRef.current.getBoundingClientRect();
+      const scrollContainer = document.querySelector('.board-scroll-container');
+      setDragOffset({
+        x: e.clientX - rect.left + scrollContainer.scrollLeft,
+        y: e.clientY - rect.top + scrollContainer.scrollTop
+      });
     }
   };
 
   const handleTouchStart = (e) => {
-    if (!isEditing && onMove && !(e.target.closest && e.target.closest('.delete-btn'))) {
-      const t = e.touches?.[0];
-      if (!t) return;
+    if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
       e.preventDefault();
       e.stopPropagation();
-      startDrag(t.clientX, t.clientY);
+      setIsMoving(true);
+      const touch = e.touches[0];
+      const rect = postItRef.current.getBoundingClientRect();
+      const scrollContainer = document.querySelector('.board-scroll-container');
+      setDragOffset({
+        x: touch.clientX - rect.left + scrollContainer.scrollLeft,
+        y: touch.clientY - rect.top + scrollContainer.scrollTop
+      });
     }
   };
 
   useEffect(() => {
     if (!isMoving) return;
 
-    const sc = getScrollContainer();
-    const boardEl = getBoardEl();
-    if (!sc || !boardEl) return;
-
-    const rect = boardEl.getBoundingClientRect();
-
     const handleMove = (e) => {
-      const t = e.touches ? e.touches[0] : null;
-      const clientX = t ? t.clientX : e.clientX;
-      const clientY = t ? t.clientY : e.clientY;
-      if (clientX == null || clientY == null || !onMove) return;
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
 
-      const pointerBoardX = (clientX - rect.left + sc.scrollLeft) / scale;
-      const pointerBoardY = (clientY - rect.top + sc.scrollTop) / scale;
-
-      onMove({
-        x: pointerBoardX - dragOffset.x,
-        y: pointerBoardY - dragOffset.y
-      });
+      if (clientX && clientY && onMove) {
+        const scrollContainer = document.querySelector('.board-scroll-container');
+        onMove({
+          x: clientX - dragOffset.x + scrollContainer.scrollLeft,
+          y: clientY - dragOffset.y + scrollContainer.scrollTop
+        });
+      }
     };
 
-    const handleEnd = () => setIsMoving(false);
+    const handleEnd = () => {
+      setIsMoving(false);
+    };
 
-    const touchMoveOptions = { passive: false };
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleEnd);
-    document.addEventListener('touchmove', handleMove, touchMoveOptions);
+    document.addEventListener('touchmove', handleMove, { passive: false });
     document.addEventListener('touchend', handleEnd);
 
     return () => {
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleEnd);
-      document.removeEventListener('touchmove', handleMove, touchMoveOptions);
+      document.removeEventListener('touchmove', handleMove);
       document.removeEventListener('touchend', handleEnd);
     };
-  }, [isMoving, dragOffset, onMove, scale]);
+  }, [isMoving, dragOffset, onMove]);
 
   const selectedColor = colors.find(c => c.value === color) || colors[0];
-  const canDelete = authorId && currentUserId && authorId === currentUserId;
-  const isAbsolutelyPositioned = !!position;
+  const canDelete = authorId === currentUserId;
 
   return (
       <div
           ref={postItRef}
           data-postit="true"
           className={`
-        ${isAbsolutelyPositioned ? 'absolute' : 'relative'}
-        rounded-xl shadow-lg select-none
+        absolute rounded-xl shadow-lg select-none
         ${isDragging || isMoving ? 'scale-105 shadow-2xl z-50' : 'hover:scale-102 hover:shadow-xl'}
         ${isMoving ? 'cursor-grabbing' : (isEditing ? 'cursor-text' : 'cursor-pointer')}
       `}
           style={{
-            position: isAbsolutelyPositioned ? 'absolute' : 'relative',
             backgroundColor: selectedColor.value,
             borderColor: selectedColor.border,
             borderWidth: '3px',
             borderStyle: 'solid',
-            width: isEditing ? `${EDIT_W}px` : `${NOTE_W}px`,
-            minHeight: isEditing ? `${EDIT_H}px` : `${NOTE_H}px`,
+            width: isEditing ? '320px' : '220px',
+            minHeight: isEditing ? '380px' : '260px',
             left: position?.x || 0,
             top: position?.y || 0,
             zIndex: isDragging || isMoving ? 1000 : (isInitial ? 500 : 10),
             filter: `drop-shadow(0 8px 16px rgba(0,0,0,0.15))`,
-            opacity: 1
+            opacity: 1 // Ensure post-its are fully visible
           }}
           onMouseDown={!isEditing ? handleMouseDown : undefined}
           onTouchStart={!isEditing ? handleTouchStart : undefined}
-          onClick={!isEditing && onClick && !isMoving ? (e) => { e.stopPropagation(); onClick(); } : undefined}
+          onClick={!isEditing && !isMoving && onClick ? (e) => {
+            e.stopPropagation();
+            onClick();
+          } : undefined}
       >
-        {/* Color picker (editing only) */}
+        {/* Color picker circles - only show when editing */}
         {isEditing && (
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex space-x-3">
               {colors.map((c) => (
@@ -155,42 +134,52 @@ function PostIt({
                       className={`w-8 h-8 rounded-full border-3 transition-all duration-200 ${
                           color === c.value ? 'scale-125 shadow-lg ring-2 ring-white' : 'hover:scale-110 shadow-md'
                       }`}
-                      style={{ backgroundColor: c.value, borderColor: color === c.value ? '#333' : c.border }}
-                      onClick={(e) => { e.stopPropagation(); setColor && setColor(c.value); }}
+                      style={{
+                        backgroundColor: c.value,
+                        borderColor: color === c.value ? '#333' : c.border
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setColor(c.value);
+                      }}
                   />
               ))}
             </div>
         )}
 
-        {/* Delete (author only) */}
+        {/* Delete button for posted notes */}
         {onDelete && !isEditing && canDelete && (
             <button
                 className="delete-btn absolute top-3 right-3 p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition-all duration-200 shadow-lg hover:scale-110"
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                title="Delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
             >
               <X size={16} />
             </button>
         )}
 
-        {/* Move indicator */}
+        {/* Move indicator for posted notes */}
         {!isEditing && (
             <div className="absolute top-3 left-3 text-gray-600 opacity-60">
               <Move size={16} />
             </div>
         )}
 
-        {/* Content */}
+        {/* Main content area */}
         <div className="p-6 h-full flex flex-col" style={{ paddingTop: isEditing ? '60px' : '40px' }}>
           {isEditing ? (
-              <textarea
-                  className="flex-1 w-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-600 font-medium mb-4"
-                  placeholder="Type your idea here..."
-                  value={text}
-                  onChange={(e) => setText && setText(e.target.value)}
-                  style={{ fontSize: '16px', lineHeight: '1.5', minHeight: '200px' }}
-                  autoFocus
-              />
+              <>
+            <textarea
+                className="flex-1 w-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-600 font-medium mb-4"
+                placeholder="Type your idea here..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                style={{ fontSize: '16px', lineHeight: '1.5', minHeight: '200px' }}
+                autoFocus
+            />
+              </>
           ) : (
               <div className="flex-1 text-gray-800 font-medium leading-relaxed break-words" style={{ fontSize: '15px' }}>
                 {text}
@@ -198,15 +187,17 @@ function PostIt({
           )}
         </div>
 
-        {/* Post button (editing only) */}
+        {/* Post button at the bottom - only show when editing */}
         {isEditing && (
             <div className="p-6 pt-0">
               <button
                   className={`w-full px-6 py-3 rounded-xl font-semibold text-white transition-all duration-200 shadow-lg ${
-                      text?.trim() ? 'bg-blue-500 hover:bg-blue-600 hover:scale-105 active:scale-95' : 'bg-gray-400 cursor-not-allowed'
+                      text.trim()
+                          ? 'bg-blue-500 hover:bg-blue-600 hover:scale-105 active:scale-95'
+                          : 'bg-gray-400 cursor-not-allowed'
                   }`}
                   onClick={onPost}
-                  disabled={!text?.trim()}
+                  disabled={!text.trim()}
               >
                 Post to Board
               </button>
@@ -214,10 +205,9 @@ function PostIt({
         )}
       </div>
   );
-}
+};
 
-/* ------------------- PegBoard (single file) ------------------- */
-export default function App() {
+const PegBoard = () => {
   const [posts, setPosts] = useState([]);
   const [showNewPost, setShowNewPost] = useState(true);
   const [newPostText, setNewPostText] = useState('');
@@ -225,107 +215,85 @@ export default function App() {
   const [selectedPost, setSelectedPost] = useState(null);
   const [scale, setScale] = useState(1);
   const [hasPostedOnce, setHasPostedOnce] = useState(false);
-
-  // Stable pseudo-user id (for delete permission)
-  const currentUserIdRef = useRef(null);
-  if (!currentUserIdRef.current) {
-    const saved = localStorage.getItem('pegboard_user_id');
-    if (saved) currentUserIdRef.current = saved;
-    else {
-      const fresh = Math.random().toString(36).slice(2, 11);
-      localStorage.setItem('pegboard_user_id', fresh);
-      currentUserIdRef.current = fresh;
-    }
-  }
-  const currentUserId = currentUserIdRef.current;
-
-  // Refs for pan/zoom
-  const scRef = useRef(null); // scroll container
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const currentUserId = useRef(Math.random().toString(36).substr(2, 9)).current;
   const boardRef = useRef(null);
 
-  // Subscribe to realtime posts
   useEffect(() => {
     const unsubscribe = firebaseService.onPostsChange((newPosts) => {
-      setPosts(Array.isArray(newPosts) ? newPosts : []);
+      setPosts(newPosts);
     });
     return unsubscribe;
   }, []);
 
-  // Center the initial editor on first render
-  useEffect(() => {
-    // no-op: editor modal is flex-centered below
-  }, []);
-
-  // Rectangle overlap check
-  const overlapsRect = (a, b, pad = 40) => {
-    if (!a || !b) return false;
-    return !(
-        a.x + NOTE_W + pad < b.x ||
-        a.x > b.x + NOTE_W + pad ||
-        a.y + NOTE_H + pad < b.y ||
-        a.y > b.y + NOTE_H + pad
-    );
-  };
-
   const getRandomPosition = () => {
     const margin = 60;
-    const maxAttempts = 60;
-    const sc = scRef.current;
+    const postWidth = 220;
+    const postHeight = 260;
+    const maxAttempts = 50;
 
-    const visible = {
-      left: sc ? sc.scrollLeft : 0,
-      top: sc ? sc.scrollTop : 0,
-      right: sc ? sc.scrollLeft + sc.clientWidth : window.innerWidth,
-      bottom: sc ? sc.scrollTop + sc.clientHeight : window.innerHeight
+    // Get the scroll container to understand visible area
+    const scrollContainer = document.querySelector('.board-scroll-container');
+    const visibleArea = {
+      left: scrollContainer ? scrollContainer.scrollLeft : 0,
+      top: scrollContainer ? scrollContainer.scrollTop : 0,
+      right: scrollContainer ? scrollContainer.scrollLeft + scrollContainer.clientWidth : window.innerWidth,
+      bottom: scrollContainer ? scrollContainer.scrollTop + scrollContainer.clientHeight : window.innerHeight
     };
 
+    // Try to place within or near the visible area
     const searchPadding = 300;
-    const search = {
-      left: Math.max(margin, visible.left - searchPadding),
-      top: Math.max(margin, visible.top - searchPadding),
-      right: visible.right + searchPadding,
-      bottom: visible.bottom + searchPadding
+    const searchArea = {
+      left: Math.max(margin, visibleArea.left - searchPadding),
+      top: Math.max(margin, visibleArea.top - searchPadding),
+      right: visibleArea.right + searchPadding,
+      bottom: visibleArea.bottom + searchPadding
     };
 
-    const boardWidth = 4000;
-    const boardHeight = 3000;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const newPosition = {
+        x: Math.random() * (searchArea.right - searchArea.left - postWidth) + searchArea.left,
+        y: Math.random() * (searchArea.bottom - searchArea.top - postHeight) + searchArea.top
+      };
 
-    for (let i = 0; i < maxAttempts; i++) {
-      const x = Math.min(
-          Math.max(Math.random() * (search.right - search.left - NOTE_W) + search.left, margin),
-          boardWidth - NOTE_W - margin
-      );
-      const y = Math.min(
-          Math.max(Math.random() * (search.bottom - search.top - NOTE_H) + search.top, margin),
-          boardHeight - NOTE_H - margin
-      );
+      // Check if this position overlaps with existing posts
+      const isOverlapping = posts.some(post => {
+        if (!post.position) return false;
 
-      const candidate = { x, y };
-      const collision = posts.some((p) => p.position && overlapsRect(candidate, p.position, 40));
-      if (!collision) return candidate;
+        const distance = Math.sqrt(
+            Math.pow(newPosition.x - post.position.x, 2) +
+            Math.pow(newPosition.y - post.position.y, 2)
+        );
+
+        return distance < (postWidth + 40);
+      });
+
+      if (!isOverlapping) {
+        return newPosition;
+      }
     }
 
+    // Fallback: place in center of visible area
     return {
-      x: (visible.left + visible.right) / 2 - NOTE_W / 2,
-      y: (visible.top + visible.bottom) / 2 - NOTE_H / 2
+      x: (visibleArea.left + visibleArea.right) / 2 - postWidth / 2,
+      y: (visibleArea.top + visibleArea.bottom) / 2 - postHeight / 2
     };
   };
 
   const handlePost = () => {
-    if (!newPostText.trim()) return;
-
-    const position = getRandomPosition();
-    firebaseService.addPost({
-      text: newPostText.trim(),
-      color: newPostColor,
-      position,
-      authorId: currentUserId
-    });
-
-    setNewPostText('');
-    setNewPostColor(colors[0].value);
-    setShowNewPost(false);
-    setHasPostedOnce(true);
+    if (newPostText.trim()) {
+      const position = getRandomPosition();
+      firebaseService.addPost({
+        text: newPostText,
+        color: newPostColor,
+        position,
+        authorId: currentUserId
+      });
+      setNewPostText('');
+      setNewPostColor(colors[0].value);
+      setShowNewPost(false);
+      setHasPostedOnce(true);
+    }
   };
 
   const handleDeletePost = (id) => {
@@ -336,143 +304,80 @@ export default function App() {
     firebaseService.updatePost(id, { position: newPosition });
   };
 
-  const handleCreateNewPost = () => setShowNewPost(true);
+  const handleCreateNewPost = () => {
+    setShowNewPost(true);
+  };
 
-  /* ---------- Zoom: wheel/trackpad pinch (desktop) ---------- */
+  // Gesture handling for pan and pinch zoom on mobile
   useEffect(() => {
-    const sc = scRef.current;
     const board = boardRef.current;
-    if (!sc || !board) return;
+    if (!board) return;
 
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    const minScale = 0.5;
-    const maxScale = 2;
+    let startX, startY, startDistance;
+    let isPanning = false;
 
-    const zoomAt = (clientX, clientY, nextScale) => {
-      const rect = board.getBoundingClientRect();
-      const prev = scale;
-      const target = clamp(nextScale, minScale, maxScale);
-      if (target === prev) return;
-
-      // Keep the zoom focus under the cursor
-      const boardX = (clientX - rect.left + sc.scrollLeft) / prev;
-      const boardY = (clientY - rect.top + sc.scrollTop) / prev;
-
-      setScale(target);
-
-      // On next tick, adjust scroll to keep focus
-      requestAnimationFrame(() => {
-        sc.scrollLeft = boardX * target - (clientX - rect.left);
-        sc.scrollTop = boardY * target - (clientY - rect.top);
-      });
+    const getDistance = (touches) => {
+      return Math.sqrt(
+          Math.pow(touches[0].clientX - touches[1].clientX, 2) +
+          Math.pow(touches[0].clientY - touches[1].clientY, 2)
+      );
     };
 
-    const onWheel = (e) => {
-      // Trackpad pinch on Mac sets ctrlKey + wheel
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      const delta = e.deltaY;
-      const factor = Math.exp(-delta / 300); // smooth
-      const next = scale * factor;
-      zoomAt(e.clientX, e.clientY, next);
-    };
-
-    sc.addEventListener('wheel', onWheel, { passive: false });
-    return () => sc.removeEventListener('wheel', onWheel);
-  }, [scale]);
-
-  /* ---------- Zoom: mobile pinch + one-finger pan ---------- */
-  useEffect(() => {
-    const sc = scRef.current;
-    const board = boardRef.current;
-    if (!sc || !board) return;
-
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    const minScale = 0.5;
-    const maxScale = 2;
-
-    let pinch = {
-      active: false,
-      startDist: 0,
-      startScale: scale,
-      centerClient: { x: 0, y: 0 }
-    };
-
-    let panning = {
-      active: false,
-      lastX: 0,
-      lastY: 0
-    };
-
-    const dist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-    const mid = (t1, t2) => ({ x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 });
-
-    const onTouchStart = (e) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        pinch.active = true;
-        pinch.startDist = dist(e.touches[0], e.touches[1]);
-        pinch.startScale = scale;
-        pinch.centerClient = mid(e.touches[0], e.touches[1]);
-      } else if (e.touches.length === 1 && !pinch.active) {
-        // one-finger pan via scrolling
-        panning.active = true;
-        panning.lastX = e.touches[0].clientX;
-        panning.lastY = e.touches[0].clientY;
+    const handleTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        isPanning = true;
+        startX = e.touches[0].clientX - panOffset.x;
+        startY = e.touches[0].clientY - panOffset.y;
+      } else if (e.touches.length === 2) {
+        isPanning = false;
+        startDistance = getDistance(e.touches);
+        startX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        startY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       }
     };
 
-    const onTouchMove = (e) => {
-      if (pinch.active && e.touches.length === 2) {
+    const handleTouchMove = (e) => {
+      if (e.touches.length === 1 && isPanning) {
         e.preventDefault();
-        const newDist = dist(e.touches[0], e.touches[1]);
-        const factor = newDist / (pinch.startDist || 1);
-        const next = clamp(pinch.startScale * factor, minScale, maxScale);
+        const newX = e.touches[0].clientX - startX;
+        const newY = e.touches[0].clientY - startY;
+        setPanOffset({ x: newX, y: newY });
+      } else if (e.touches.length === 2) {
+        e.preventDefault();
+        const newDistance = getDistance(e.touches);
+        const scaleChange = newDistance / startDistance;
+        const newScale = Math.max(0.5, Math.min(2, scale * scaleChange));
+        setScale(newScale);
 
-        // Zoom around pinch center
-        const rect = board.getBoundingClientRect();
-        const prev = scale;
-        const boardX = (pinch.centerClient.x - rect.left + sc.scrollLeft) / prev;
-        const boardY = (pinch.centerClient.y - rect.top + sc.scrollTop) / prev;
-
-        setScale(next);
-        requestAnimationFrame(() => {
-          sc.scrollLeft = boardX * next - (pinch.centerClient.x - rect.left);
-          sc.scrollTop = boardY * next - (pinch.centerClient.y - rect.top);
-        });
-      } else if (panning.active && e.touches.length === 1) {
-        const t = e.touches[0];
-        const dx = panning.lastX - t.clientX;
-        const dy = panning.lastY - t.clientY;
-        panning.lastX = t.clientX;
-        panning.lastY = t.clientY;
-        sc.scrollLeft += dx;
-        sc.scrollTop += dy;
+        // Adjust pan to zoom towards center of pinch
+        const deltaScale = newScale / scale;
+        const pinchX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const pinchY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const newPanX = pinchX - (pinchX - panOffset.x) * deltaScale;
+        const newPanY = pinchY - (pinchY - panOffset.y) * deltaScale;
+        setPanOffset({ x: newPanX, y: newPanY });
       }
     };
 
-    const onTouchEnd = () => {
-      if (pinch.active) pinch.active = false;
-      if (panning.active) panning.active = false;
+    const handleTouchEnd = () => {
+      isPanning = false;
     };
 
-    sc.addEventListener('touchstart', onTouchStart, { passive: false });
-    sc.addEventListener('touchmove', onTouchMove, { passive: false });
-    sc.addEventListener('touchend', onTouchEnd, { passive: false });
-    sc.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    board.addEventListener('touchstart', handleTouchStart, { passive: false });
+    board.addEventListener('touchmove', handleTouchMove, { passive: false });
+    board.addEventListener('touchend', handleTouchEnd);
 
     return () => {
-      sc.removeEventListener('touchstart', onTouchStart);
-      sc.removeEventListener('touchmove', onTouchMove);
-      sc.removeEventListener('touchend', onTouchEnd);
-      sc.removeEventListener('touchcancel', onTouchEnd);
+      board.removeEventListener('touchstart', handleTouchStart);
+      board.removeEventListener('touchmove', handleTouchMove);
+      board.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [scale]);
+  }, [scale, panOffset]);
 
   return (
       <div className="w-full h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 overflow-hidden relative">
 
-        {/* Initial Post-it editor (centered) */}
+        {/* Initial Post-it (center screen when user arrives) */}
         {showNewPost && (
             <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4">
               <div className="flex items-center justify-center">
@@ -484,44 +389,44 @@ export default function App() {
                     onPost={handlePost}
                     isEditing={true}
                     isInitial={!hasPostedOnce}
-                    scale={scale}
-                    currentUserId={currentUserId}
-                    /* no position => renders centered block */
                 />
               </div>
             </div>
         )}
 
-        {/* Selected Post Modal (centered, blurred backdrop) */}
+        {/* Selected Post Modal (for viewing) */}
         {selectedPost && (
             <div
-                className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+                className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
                 onClick={() => setSelectedPost(null)}
             >
-              <div onClick={(e) => e.stopPropagation()}>
+              <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="transform scale-125" // Slightly enlarge for better viewing
+              >
                 <PostIt
                     text={selectedPost.text}
                     color={selectedPost.color}
                     isEditing={false}
-                    scale={scale}
-                    currentUserId={currentUserId}
-                    /* no position => relative center */
                 />
               </div>
             </div>
         )}
 
-        {/* Scrollable, zoomable board */}
+        {/* Scrollable Peg Board */}
         <div
-            ref={scRef}
-            className="board-scroll-container w-full h-full overflow-auto touch-pan-y touch-pan-x"
-            style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}
+            ref={boardRef}
+            className="board-scroll-container w-full h-full overflow-hidden touch-pan-y touch-pinch-zoom"
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${scale})`,
+              transformOrigin: 'center center',
+              transition: 'transform 0.1s ease-out'
+            }}
         >
           <div
-              ref={boardRef}
-              className="board-inner relative"
+              className="relative"
               style={{
-                width: '4000px',
+                width: '4000px', // Large fixed board size
                 height: '3000px',
                 backgroundImage: `
               radial-gradient(circle at 25% 25%, #8B4513 2px, transparent 2px),
@@ -532,7 +437,7 @@ export default function App() {
                 backgroundSize: '60px 60px'
               }}
           >
-            {/* subtle overlay */}
+            {/* Cork board background layer */}
             <div
                 className="absolute inset-0"
                 style={{
@@ -548,7 +453,7 @@ export default function App() {
                 }}
             />
 
-            {/* Posted notes */}
+            {/* Posted Notes */}
             {posts.map((post) => (
                 <PostIt
                     key={post.id}
@@ -560,14 +465,12 @@ export default function App() {
                     onMove={(newPosition) => handleMovePost(post.id, newPosition)}
                     onClick={() => setSelectedPost(post)}
                     authorId={post.authorId}
-                    scale={scale}
-                    currentUserId={currentUserId}
                 />
             ))}
           </div>
         </div>
 
-        {/* Floating POST button (no live banner anymore) */}
+        {/* Floating Post Button (only show after first post) */}
         {hasPostedOnce && !showNewPost && (
             <button
                 className="fixed bottom-8 right-8 bg-blue-500 text-white p-4 rounded-full shadow-xl hover:bg-blue-600 transition-all duration-200 hover:scale-110 z-40 font-bold text-lg"
@@ -577,6 +480,34 @@ export default function App() {
               POST
             </button>
         )}
+
+        {/* Zoom controls (bottom left) */}
+        {hasPostedOnce && (
+            <div className="fixed bottom-8 left-8 flex flex-col space-y-3 z-40">
+              <button
+                  className="bg-white bg-opacity-90 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-lg"
+                  onClick={() => setScale(Math.min(2, scale * 1.2))}
+              >
+                +
+              </button>
+              <button
+                  className="bg-white bg-opacity-90 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-S"
+                  onClick={() => setScale(Math.max(0.5, scale / 1.2))}
+              >
+                −
+              </button>
+            </div>
+        )}
+
       </div>
+  );
+};
+
+export default function App() {
+  return (
+      <>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
+        <PegBoard />
+      </>
   );
 }
