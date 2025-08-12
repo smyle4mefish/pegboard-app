@@ -135,7 +135,6 @@ const PostIt = ({
         relative rounded-xl shadow-lg transform transition-all duration-300 select-none
         ${isDragging || isMoving ? 'scale-105 shadow-2xl z-50' : 'hover:scale-102 hover:shadow-xl'}
         ${isMoving ? 'cursor-grabbing' : (isEditing ? 'cursor-text' : 'cursor-pointer')}
-        ${isInitial ? 'animate-pulse' : ''}
       `}
           style={{
             backgroundColor: selectedColor.value,
