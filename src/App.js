@@ -114,8 +114,9 @@ const PostIt = ({
             minHeight: isEditing ? '380px' : '260px',
             left: position?.x || 0,
             top: position?.y || 0,
-            zIndex: isDragging || isMoving ? 1000 : (isInitial ? 500 : 1),
-            filter: `drop-shadow(0 8px 16px rgba(0,0,0,0.15))`
+            zIndex: isDragging || isMoving ? 1000 : (isInitial ? 500 : 10),
+            filter: `drop-shadow(0 8px 16px rgba(0,0,0,0.15))`,
+            opacity: 1 // Ensure post-its are fully visible
           }}
           onMouseDown={!isEditing ? handleMouseDown : undefined}
           onTouchStart={!isEditing ? handleTouchStart : undefined}
@@ -311,15 +312,17 @@ const PegBoard = () => {
         {/* Initial Post-it (center screen when user arrives) */}
         {showNewPost && (
             <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4">
-              <PostIt
-                  text={newPostText}
-                  setText={setNewPostText}
-                  color={newPostColor}
-                  setColor={setNewPostColor}
-                  onPost={handlePost}
-                  isEditing={true}
-                  isInitial={!hasPostedOnce}
-              />
+              <div className="flex items-center justify-center">
+                <PostIt
+                    text={newPostText}
+                    setText={setNewPostText}
+                    color={newPostColor}
+                    setColor={setNewPostColor}
+                    onPost={handlePost}
+                    isEditing={true}
+                    isInitial={!hasPostedOnce}
+                />
+              </div>
             </div>
         )}
 
@@ -359,10 +362,25 @@ const PegBoard = () => {
               radial-gradient(circle at 25% 75%, #8B4513 2px, transparent 2px),
               radial-gradient(circle at 75% 75%, #8B4513 2px, transparent 2px)
             `,
-                backgroundSize: '60px 60px',
-                opacity: 0.15
+                backgroundSize: '60px 60px'
               }}
           >
+            {/* Cork board background layer */}
+            <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage: `
+                radial-gradient(circle at 25% 25%, #8B4513 2px, transparent 2px),
+                radial-gradient(circle at 75% 25%, #8B4513 2px, transparent 2px),
+                radial-gradient(circle at 25% 75%, #8B4513 2px, transparent 2px),
+                radial-gradient(circle at 75% 75%, #8B4513 2px, transparent 2px)
+              `,
+                  backgroundSize: '60px 60px',
+                  opacity: 0.15,
+                  zIndex: 0
+                }}
+            />
+
             {/* Posted Notes */}
             {posts.map((post) => (
                 <PostIt
