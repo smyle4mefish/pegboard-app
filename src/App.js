@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Move } from 'lucide-react';
 
-// Mock Firebase functions for demonstration
+// Mock Firebase functions - REPLACE WITH REAL FIREBASE
 const mockFirebase = {
   posts: new Map(),
   listeners: new Set(),
@@ -71,12 +71,13 @@ const PostIt = ({
   const handleMouseDown = (e) => {
     if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
       e.preventDefault();
-      e.stopPropagation(); // Stop the event from bubbling to the board
+      e.stopPropagation();
       setIsMoving(true);
       const rect = postItRef.current.getBoundingClientRect();
+      const scrollContainer = document.querySelector('.board-scroll-container');
       setDragOffset({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
+        x: e.clientX - rect.left + scrollContainer.scrollLeft,
+        y: e.clientY - rect.top + scrollContainer.scrollTop
       });
     }
   };
@@ -84,13 +85,14 @@ const PostIt = ({
   const handleTouchStart = (e) => {
     if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
       e.preventDefault();
-      e.stopPropagation(); // Stop the event from bubbling to the board
+      e.stopPropagation();
       setIsMoving(true);
       const touch = e.touches[0];
       const rect = postItRef.current.getBoundingClientRect();
+      const scrollContainer = document.querySelector('.board-scroll-container');
       setDragOffset({
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top
+        x: touch.clientX - rect.left + scrollContainer.scrollLeft,
+        y: touch.clientY - rect.top + scrollContainer.scrollTop
       });
     }
   };
@@ -103,9 +105,10 @@ const PostIt = ({
       const clientY = e.clientY || (e.touches && e.touches[0].clientY);
 
       if (clientX && clientY && onMove) {
+        const scrollContainer = document.querySelector('.board-scroll-container');
         onMove({
-          x: clientX - dragOffset.x,
-          y: clientY - dragOffset.y
+          x: clientX - dragOffset.x + scrollContainer.scrollLeft,
+          y: clientY - dragOffset.y + scrollContainer.scrollTop
         });
       }
     };
@@ -135,10 +138,9 @@ const PostIt = ({
           ref={postItRef}
           data-postit="true"
           className={`
-        relative rounded-xl shadow-lg transform transition-all duration-300 select-none
+        absolute rounded-xl shadow-lg select-none
         ${isDragging || isMoving ? 'scale-105 shadow-2xl z-50' : 'hover:scale-102 hover:shadow-xl'}
         ${isMoving ? 'cursor-grabbing' : (isEditing ? 'cursor-text' : 'cursor-pointer')}
-
       `}
           style={{
             backgroundColor: selectedColor.value,
@@ -147,16 +149,15 @@ const PostIt = ({
             borderStyle: 'solid',
             width: isEditing ? '320px' : '220px',
             minHeight: isEditing ? '380px' : '260px',
-            position: position ? 'absolute' : 'relative',
-            left: position?.x,
-            top: position?.y,
+            left: position?.x || 0,
+            top: position?.y || 0,
             zIndex: isDragging || isMoving ? 1000 : (isInitial ? 500 : 1),
             filter: `drop-shadow(0 8px 16px rgba(0,0,0,0.15))`
           }}
           onMouseDown={!isEditing ? handleMouseDown : undefined}
           onTouchStart={!isEditing ? handleTouchStart : undefined}
           onClick={!isEditing && !isMoving && onClick ? (e) => {
-            e.stopPropagation(); // Prevent board panning when clicking to view
+            e.stopPropagation();
             onClick();
           } : undefined}
       >
@@ -244,16 +245,12 @@ const PostIt = ({
 
 const PegBoard = () => {
   const [posts, setPosts] = useState([]);
-  const [showNewPost, setShowNewPost] = useState(true); // Start with post-it visible
+  const [showNewPost, setShowNewPost] = useState(true);
   const [newPostText, setNewPostText] = useState('');
   const [newPostColor, setNewPostColor] = useState(colors[0].value);
   const [selectedPost, setSelectedPost] = useState(null);
   const [scale, setScale] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [hasPostedOnce, setHasPostedOnce] = useState(false);
-  const boardRef = useRef(null);
   const currentUserId = useRef(Math.random().toString(36).substr(2, 9)).current;
 
   useEffect(() => {
@@ -269,25 +266,25 @@ const PegBoard = () => {
     const postHeight = 260;
     const maxAttempts = 50;
 
-    // Calculate the current visible area based on pan and scale
+    // Get the scroll container to understand visible area
+    const scrollContainer = document.querySelector('.board-scroll-container');
     const visibleArea = {
-      left: -pan.x / scale,
-      top: -pan.y / scale,
-      right: (-pan.x + window.innerWidth) / scale,
-      bottom: (-pan.y + window.innerHeight) / scale
+      left: scrollContainer ? scrollContainer.scrollLeft : 0,
+      top: scrollContainer ? scrollContainer.scrollTop : 0,
+      right: scrollContainer ? scrollContainer.scrollLeft + scrollContainer.clientWidth : window.innerWidth,
+      bottom: scrollContainer ? scrollContainer.scrollTop + scrollContainer.clientHeight : window.innerHeight
     };
 
-    // Expand the search area slightly beyond the visible area
-    const searchPadding = 200;
+    // Try to place within or near the visible area
+    const searchPadding = 300;
     const searchArea = {
-      left: visibleArea.left - searchPadding,
-      top: visibleArea.top - searchPadding,
+      left: Math.max(margin, visibleArea.left - searchPadding),
+      top: Math.max(margin, visibleArea.top - searchPadding),
       right: visibleArea.right + searchPadding,
       bottom: visibleArea.bottom + searchPadding
     };
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Generate position within the visible/nearby area
       const newPosition = {
         x: Math.random() * (searchArea.right - searchArea.left - postWidth) + searchArea.left,
         y: Math.random() * (searchArea.bottom - searchArea.top - postHeight) + searchArea.top
@@ -302,7 +299,6 @@ const PegBoard = () => {
             Math.pow(newPosition.y - post.position.y, 2)
         );
 
-        // Minimum distance between post-its (post width + some spacing)
         return distance < (postWidth + 40);
       });
 
@@ -311,7 +307,7 @@ const PegBoard = () => {
       }
     }
 
-    // Fallback: if visible area is full, place it in center of current view
+    // Fallback: place in center of visible area
     return {
       x: (visibleArea.left + visibleArea.right) / 2 - postWidth / 2,
       y: (visibleArea.top + visibleArea.bottom) / 2 - postHeight / 2
@@ -340,52 +336,6 @@ const PegBoard = () => {
 
   const handleMovePost = (id, newPosition) => {
     mockFirebase.updatePost(id, { position: newPosition });
-  };
-
-  const handlePanStart = (e) => {
-    // Only start panning if the touch/click is directly on the board background, not on a post-it
-    if ((e.target === boardRef.current || e.target.closest('.board-background')) &&
-        !e.target.closest('[data-postit]')) {
-      setIsPanning(true);
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-      setPanStart({ x: clientX - pan.x, y: clientY - pan.y });
-    }
-  };
-
-  useEffect(() => {
-    if (!isPanning) return;
-
-    const handlePanMove = (e) => {
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-      setPan({
-        x: clientX - panStart.x,
-        y: clientY - panStart.y
-      });
-    };
-
-    const handlePanEnd = () => {
-      setIsPanning(false);
-    };
-
-    document.addEventListener('mousemove', handlePanMove);
-    document.addEventListener('mouseup', handlePanEnd);
-    document.addEventListener('touchmove', handlePanMove, { passive: false });
-    document.addEventListener('touchend', handlePanEnd);
-
-    return () => {
-      document.removeEventListener('mousemove', handlePanMove);
-      document.removeEventListener('mouseup', handlePanEnd);
-      document.removeEventListener('touchmove', handlePanMove);
-      document.removeEventListener('touchend', handlePanEnd);
-    };
-  }, [isPanning, panStart]);
-
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const newScale = Math.max(0.3, Math.min(3, scale + e.deltaY * -0.001));
-    setScale(newScale);
   };
 
   const handleCreateNewPost = () => {
@@ -427,50 +377,44 @@ const PegBoard = () => {
             </div>
         )}
 
-        {/* Peg Board */}
+        {/* Scrollable Peg Board */}
         <div
-            ref={boardRef}
-            className="board-background w-full h-full cursor-move"
+            className="board-scroll-container w-full h-full overflow-auto"
             style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
-              transformOrigin: 'center center'
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left'
             }}
-            onMouseDown={handlePanStart}
-            onTouchStart={handlePanStart}
-            onWheel={handleWheel}
         >
-          {/* Cork board texture - make it much larger */}
           <div
-              className="board-background absolute opacity-15"
+              className="relative"
               style={{
-                width: '500vw', // 5x viewport width
-                height: '500vh', // 5x viewport height
-                left: '-200vw', // Center it
-                top: '-200vh', // Center it
+                width: '4000px', // Large fixed board size
+                height: '3000px',
                 backgroundImage: `
               radial-gradient(circle at 25% 25%, #8B4513 2px, transparent 2px),
               radial-gradient(circle at 75% 25%, #8B4513 2px, transparent 2px),
               radial-gradient(circle at 25% 75%, #8B4513 2px, transparent 2px),
               radial-gradient(circle at 75% 75%, #8B4513 2px, transparent 2px)
             `,
-                backgroundSize: '60px 60px'
+                backgroundSize: '60px 60px',
+                opacity: 0.15
               }}
-          />
-
-          {/* Posted Notes */}
-          {posts.map((post) => (
-              <PostIt
-                  key={post.id}
-                  text={post.text}
-                  color={post.color}
-                  position={post.position}
-                  isEditing={false}
-                  onDelete={() => handleDeletePost(post.id)}
-                  onMove={(newPosition) => handleMovePost(post.id, newPosition)}
-                  onClick={() => setSelectedPost(post)}
-                  authorId={post.authorId}
-              />
-          ))}
+          >
+            {/* Posted Notes */}
+            {posts.map((post) => (
+                <PostIt
+                    key={post.id}
+                    text={post.text}
+                    color={post.color}
+                    position={post.position}
+                    isEditing={false}
+                    onDelete={() => handleDeletePost(post.id)}
+                    onMove={(newPosition) => handleMovePost(post.id, newPosition)}
+                    onClick={() => setSelectedPost(post)}
+                    authorId={post.authorId}
+                />
+            ))}
+          </div>
         </div>
 
         {/* Floating Post Button (only show after first post) */}
@@ -484,21 +428,29 @@ const PegBoard = () => {
             </button>
         )}
 
-        {/* Subtle zoom controls (bottom left) */}
+        {/* Zoom controls (bottom left) */}
         {hasPostedOnce && (
             <div className="fixed bottom-8 left-8 flex flex-col space-y-3 z-40">
               <button
-                  className="bg-white bg-opacity-80 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-lg"
-                  onClick={() => setScale(Math.min(3, scale * 1.3))}
+                  className="bg-white bg-opacity-90 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-lg"
+                  onClick={() => setScale(Math.min(2, scale * 1.2))}
               >
                 +
               </button>
               <button
-                  className="bg-white bg-opacity-80 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-lg"
-                  onClick={() => setScale(Math.max(0.3, scale / 1.3))}
+                  className="bg-white bg-opacity-90 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-S"
+                  onClick={() => setScale(Math.max(0.5, scale / 1.2))}
               >
                 −
               </button>
+            </div>
+        )}
+
+        {/* Instructions for collaboration */}
+        {hasPostedOnce && (
+            <div className="fixed top-4 right-4 bg-yellow-100 border-l-4 border-yellow-500 p-3 rounded shadow-lg text-sm max-w-xs z-40">
+              <p className="font-semibold text-yellow-800">Note:</p>
+              <p className="text-yellow-700">Real-time collaboration requires Firebase setup. Currently using local storage only.</p>
             </div>
         )}
       </div>
