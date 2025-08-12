@@ -265,14 +265,43 @@ const PegBoard = () => {
 
   const getRandomPosition = () => {
     const margin = 60;
-    const boardWidth = window.innerWidth;
-    const boardHeight = window.innerHeight;
     const postWidth = 220;
     const postHeight = 260;
+    const maxAttempts = 50;
 
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Generate position in a much larger area (3x screen size)
+      const boardWidth = window.innerWidth * 3;
+      const boardHeight = window.innerHeight * 3;
+
+      const newPosition = {
+        x: Math.random() * (boardWidth - postWidth - margin * 2) + margin - window.innerWidth,
+        y: Math.random() * (boardHeight - postHeight - margin * 2) + margin - window.innerHeight
+      };
+
+      // Check if this position overlaps with existing posts
+      const isOverlapping = posts.some(post => {
+        if (!post.position) return false;
+
+        const distance = Math.sqrt(
+            Math.pow(newPosition.x - post.position.x, 2) +
+            Math.pow(newPosition.y - post.position.y, 2)
+        );
+
+        // Minimum distance between post-its (post width + some spacing)
+        return distance < (postWidth + 40);
+      });
+
+      if (!isOverlapping) {
+        return newPosition;
+      }
+    }
+
+    // If we can't find a non-overlapping position after many attempts,
+    // just return a random position (fallback)
     return {
-      x: Math.random() * (boardWidth - postWidth - margin * 2) + margin,
-      y: Math.random() * (boardHeight - postHeight - margin * 2) + margin
+      x: Math.random() * (window.innerWidth * 2) - window.innerWidth / 2,
+      y: Math.random() * (window.innerHeight * 2) - window.innerHeight / 2
     };
   };
 
@@ -397,10 +426,14 @@ const PegBoard = () => {
             onTouchStart={handlePanStart}
             onWheel={handleWheel}
         >
-          {/* Cork board texture */}
+          {/* Cork board texture - make it much larger */}
           <div
-              className="board-background absolute inset-0 opacity-15"
+              className="board-background absolute opacity-15"
               style={{
+                width: '500vw', // 5x viewport width
+                height: '500vh', // 5x viewport height
+                left: '-200vw', // Center it
+                top: '-200vh', // Center it
                 backgroundImage: `
               radial-gradient(circle at 25% 25%, #8B4513 2px, transparent 2px),
               radial-gradient(circle at 75% 25%, #8B4513 2px, transparent 2px),
