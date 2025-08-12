@@ -10,6 +10,12 @@ const colors = [
   { name: 'Orange', value: '#FFCC80', border: '#FFB74D' }
 ];
 
+// Dimensions used for placement/overlap math
+const EDIT_W = 320;
+const EDIT_H = 380;
+const NOTE_W = 220;
+const NOTE_H = 260;
+
 const PostIt = ({
                   text,
                   setText,
@@ -24,77 +30,106 @@ const PostIt = ({
                   onClick,
                   isDragging = false,
                   authorId,
-                  isInitial = false
+                  isInitial = false,
+                  scale = 1,
+                  currentUserId, // <- provided by PegBoard for delete permission
                 }) => {
   const [isMoving, setIsMoving] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 }); // in board coords
   const postItRef = useRef(null);
-  const currentUserId = useRef(Math.random().toString(36).substr(2, 9)).current;
+
+  // Convenience getters for DOM we rely on
+  const getScrollContainer = () => document.querySelector('.board-scroll-container');
+  const getBoardEl = () => document.querySelector('.board-inner');
+
+  const startDrag = (clientX, clientY) => {
+    if (isEditing || !onMove) return;
+
+    const scrollContainer = getScrollContainer();
+    const boardEl = getBoardEl();
+    if (!scrollContainer || !boardEl || !postItRef.current) return;
+
+    const boardRect = boardEl.getBoundingClientRect();
+
+    // Pointer position in board coordinates (unscaled)
+    const pointerBoardX = (clientX - boardRect.left + scrollContainer.scrollLeft) / scale;
+    const pointerBoardY = (clientY - boardRect.top + scrollContainer.scrollTop) / scale;
+
+    // Note: position is already in board coords
+    const noteX = position?.x || 0;
+    const noteY = position?.y || 0;
+
+    setDragOffset({ x: pointerBoardX - noteX, y: pointerBoardY - noteY });
+    setIsMoving(true);
+  };
 
   const handleMouseDown = (e) => {
-    if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
+    // ignore clicks on delete button
+    if (!isEditing && onMove && !(e.target.closest && e.target.closest('.delete-btn'))) {
       e.preventDefault();
       e.stopPropagation();
-      setIsMoving(true);
-      const rect = postItRef.current.getBoundingClientRect();
-      const scrollContainer = document.querySelector('.board-scroll-container');
-      setDragOffset({
-        x: e.clientX - rect.left + scrollContainer.scrollLeft,
-        y: e.clientY - rect.top + scrollContainer.scrollTop
-      });
+      startDrag(e.clientX, e.clientY);
     }
   };
 
   const handleTouchStart = (e) => {
-    if (!isEditing && onMove && !e.target.closest('.delete-btn')) {
+    if (!isEditing && onMove && !(e.target.closest && e.target.closest('.delete-btn'))) {
+      const touch = e.touches[0];
+      if (!touch) return;
       e.preventDefault();
       e.stopPropagation();
-      setIsMoving(true);
-      const touch = e.touches[0];
-      const rect = postItRef.current.getBoundingClientRect();
-      const scrollContainer = document.querySelector('.board-scroll-container');
-      setDragOffset({
-        x: touch.clientX - rect.left + scrollContainer.scrollLeft,
-        y: touch.clientY - rect.top + scrollContainer.scrollTop
-      });
+      startDrag(touch.clientX, touch.clientY);
     }
   };
 
   useEffect(() => {
     if (!isMoving) return;
 
-    const handleMove = (e) => {
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    const scrollContainer = getScrollContainer();
+    const boardEl = getBoardEl();
+    if (!scrollContainer || !boardEl) return;
 
-      if (clientX && clientY && onMove) {
-        const scrollContainer = document.querySelector('.board-scroll-container');
-        onMove({
-          x: clientX - dragOffset.x + scrollContainer.scrollLeft,
-          y: clientY - dragOffset.y + scrollContainer.scrollTop
-        });
-      }
+    const boardRect = boardEl.getBoundingClientRect();
+
+    const handleMove = (e) => {
+      const touch = e.touches ? e.touches[0] : null;
+      const clientX = touch ? touch.clientX : e.clientX;
+      const clientY = touch ? touch.clientY : e.clientY;
+
+      if (clientX == null || clientY == null || !onMove) return;
+
+      // Convert to board coordinates (account for scroll & scale)
+      const pointerBoardX = (clientX - boardRect.left + scrollContainer.scrollLeft) / scale;
+      const pointerBoardY = (clientY - boardRect.top + scrollContainer.scrollTop) / scale;
+
+      const newX = pointerBoardX - dragOffset.x;
+      const newY = pointerBoardY - dragOffset.y;
+
+      onMove({ x: newX, y: newY });
     };
 
     const handleEnd = () => {
       setIsMoving(false);
     };
 
+    // Use stable options object for touch listener removal
+    const touchMoveOptions = { passive: false };
+
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleEnd);
-    document.addEventListener('touchmove', handleMove, { passive: false });
+    document.addEventListener('touchmove', handleMove, touchMoveOptions);
     document.addEventListener('touchend', handleEnd);
 
     return () => {
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleEnd);
-      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchmove', handleMove, touchMoveOptions);
       document.removeEventListener('touchend', handleEnd);
     };
-  }, [isMoving, dragOffset, onMove]);
+  }, [isMoving, dragOffset, onMove, scale]);
 
-  const selectedColor = colors.find(c => c.value === color) || colors[0];
-  const canDelete = authorId === currentUserId;
+  const selectedColor = colors.find((c) => c.value === color) || colors[0];
+  const canDelete = authorId && currentUserId && authorId === currentUserId;
 
   return (
       <div
@@ -110,20 +145,24 @@ const PostIt = ({
             borderColor: selectedColor.border,
             borderWidth: '3px',
             borderStyle: 'solid',
-            width: isEditing ? '320px' : '220px',
-            minHeight: isEditing ? '380px' : '260px',
+            width: isEditing ? `${EDIT_W}px` : `${NOTE_W}px`,
+            minHeight: isEditing ? `${EDIT_H}px` : `${NOTE_H}px`,
             left: position?.x || 0,
             top: position?.y || 0,
             zIndex: isDragging || isMoving ? 1000 : (isInitial ? 500 : 10),
             filter: `drop-shadow(0 8px 16px rgba(0,0,0,0.15))`,
-            opacity: 1 // Ensure post-its are fully visible
+            opacity: 1
           }}
           onMouseDown={!isEditing ? handleMouseDown : undefined}
           onTouchStart={!isEditing ? handleTouchStart : undefined}
-          onClick={!isEditing && !isMoving && onClick ? (e) => {
-            e.stopPropagation();
-            onClick();
-          } : undefined}
+          onClick={
+            !isEditing && !isMoving && onClick
+                ? (e) => {
+                  e.stopPropagation();
+                  onClick();
+                }
+                : undefined
+          }
       >
         {/* Color picker circles - only show when editing */}
         {isEditing && (
@@ -140,14 +179,14 @@ const PostIt = ({
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setColor(c.value);
+                        setColor && setColor(c.value);
                       }}
                   />
               ))}
             </div>
         )}
 
-        {/* Delete button for posted notes */}
+        {/* Delete button for posted notes (author only) */}
         {onDelete && !isEditing && canDelete && (
             <button
                 className="delete-btn absolute top-3 right-3 p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition-all duration-200 shadow-lg hover:scale-110"
@@ -155,6 +194,7 @@ const PostIt = ({
                   e.stopPropagation();
                   onDelete();
                 }}
+                title="Delete"
             >
               <X size={16} />
             </button>
@@ -175,7 +215,7 @@ const PostIt = ({
                 className="flex-1 w-full bg-transparent border-none outline-none resize-none text-gray-800 placeholder-gray-600 font-medium mb-4"
                 placeholder="Type your idea here..."
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => setText && setText(e.target.value)}
                 style={{ fontSize: '16px', lineHeight: '1.5', minHeight: '200px' }}
                 autoFocus
             />
@@ -187,17 +227,17 @@ const PostIt = ({
           )}
         </div>
 
-        {/* Post button at the bottom - only show when editing */}
+        {/* Post button (only when editing) */}
         {isEditing && (
             <div className="p-6 pt-0">
               <button
                   className={`w-full px-6 py-3 rounded-xl font-semibold text-white transition-all duration-200 shadow-lg ${
-                      text.trim()
+                      text?.trim()
                           ? 'bg-blue-500 hover:bg-blue-600 hover:scale-105 active:scale-95'
                           : 'bg-gray-400 cursor-not-allowed'
                   }`}
                   onClick={onPost}
-                  disabled={!text.trim()}
+                  disabled={!text?.trim()}
               >
                 Post to Board
               </button>
@@ -215,83 +255,109 @@ const PegBoard = () => {
   const [selectedPost, setSelectedPost] = useState(null);
   const [scale, setScale] = useState(1);
   const [hasPostedOnce, setHasPostedOnce] = useState(false);
-  const currentUserId = useRef(Math.random().toString(36).substr(2, 9)).current;
+
+  // Stable user id for author permissions
+  const currentUserIdRef = useRef(null);
+  if (!currentUserIdRef.current) {
+    const saved = localStorage.getItem('pegboard_user_id');
+    if (saved) {
+      currentUserIdRef.current = saved;
+    } else {
+      const fresh = Math.random().toString(36).slice(2, 11);
+      localStorage.setItem('pegboard_user_id', fresh);
+      currentUserIdRef.current = fresh;
+    }
+  }
+  const currentUserId = currentUserIdRef.current;
 
   useEffect(() => {
     const unsubscribe = firebaseService.onPostsChange((newPosts) => {
-      setPosts(newPosts);
+      setPosts(Array.isArray(newPosts) ? newPosts : []);
     });
     return unsubscribe;
   }, []);
 
+  // Rectangle overlap check with padding
+  const overlapsRect = (a, b, pad = 40) => {
+    if (!a || !b) return false;
+    const aw = NOTE_W, ah = NOTE_H;
+    const bw = NOTE_W, bh = NOTE_H;
+    return !(
+        a.x + aw + pad < b.x ||
+        a.x > b.x + bw + pad ||
+        a.y + ah + pad < b.y ||
+        a.y > b.y + bh + pad
+    );
+  };
+
   const getRandomPosition = () => {
     const margin = 60;
-    const postWidth = 220;
-    const postHeight = 260;
-    const maxAttempts = 50;
+    const maxAttempts = 60;
 
-    // Get the scroll container to understand visible area
     const scrollContainer = document.querySelector('.board-scroll-container');
-    const visibleArea = {
+    const boardEl = document.querySelector('.board-inner');
+
+    const visible = {
       left: scrollContainer ? scrollContainer.scrollLeft : 0,
       top: scrollContainer ? scrollContainer.scrollTop : 0,
-      right: scrollContainer ? scrollContainer.scrollLeft + scrollContainer.clientWidth : window.innerWidth,
-      bottom: scrollContainer ? scrollContainer.scrollTop + scrollContainer.clientHeight : window.innerHeight
+      right: scrollContainer
+          ? scrollContainer.scrollLeft + scrollContainer.clientWidth
+          : window.innerWidth,
+      bottom: scrollContainer
+          ? scrollContainer.scrollTop + scrollContainer.clientHeight
+          : window.innerHeight
     };
 
-    // Try to place within or near the visible area
     const searchPadding = 300;
-    const searchArea = {
-      left: Math.max(margin, visibleArea.left - searchPadding),
-      top: Math.max(margin, visibleArea.top - searchPadding),
-      right: visibleArea.right + searchPadding,
-      bottom: visibleArea.bottom + searchPadding
+    const search = {
+      left: Math.max(margin, visible.left - searchPadding),
+      top: Math.max(margin, visible.top - searchPadding),
+      right: visible.right + searchPadding,
+      bottom: visible.bottom + searchPadding
     };
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const newPosition = {
-        x: Math.random() * (searchArea.right - searchArea.left - postWidth) + searchArea.left,
-        y: Math.random() * (searchArea.bottom - searchArea.top - postHeight) + searchArea.top
-      };
+    // Board bounds (unscaled)
+    const boardWidth = 4000;
+    const boardHeight = 3000;
 
-      // Check if this position overlaps with existing posts
-      const isOverlapping = posts.some(post => {
-        if (!post.position) return false;
+    for (let i = 0; i < maxAttempts; i++) {
+      const x = Math.min(
+          Math.max(Math.random() * (search.right - search.left - NOTE_W) + search.left, margin),
+          boardWidth - NOTE_W - margin
+      );
+      const y = Math.min(
+          Math.max(Math.random() * (search.bottom - search.top - NOTE_H) + search.top, margin),
+          boardHeight - NOTE_H - margin
+      );
 
-        const distance = Math.sqrt(
-            Math.pow(newPosition.x - post.position.x, 2) +
-            Math.pow(newPosition.y - post.position.y, 2)
-        );
-
-        return distance < (postWidth + 40);
-      });
-
-      if (!isOverlapping) {
-        return newPosition;
-      }
+      const candidate = { x, y };
+      const collision = posts.some((p) => p.position && overlapsRect(candidate, p.position, 40));
+      if (!collision) return candidate;
     }
 
-    // Fallback: place in center of visible area
+    // Fallback: center of visible area
     return {
-      x: (visibleArea.left + visibleArea.right) / 2 - postWidth / 2,
-      y: (visibleArea.top + visibleArea.bottom) / 2 - postHeight / 2
+      x: (visible.left + visible.right) / 2 - NOTE_W / 2,
+      y: (visible.top + visible.bottom) / 2 - NOTE_H / 2
     };
   };
 
   const handlePost = () => {
-    if (newPostText.trim()) {
-      const position = getRandomPosition();
-      firebaseService.addPost({
-        text: newPostText,
-        color: newPostColor,
-        position,
-        authorId: currentUserId
-      });
-      setNewPostText('');
-      setNewPostColor(colors[0].value);
-      setShowNewPost(false);
-      setHasPostedOnce(true);
-    }
+    if (!newPostText.trim()) return;
+    const position = getRandomPosition();
+
+    firebaseService.addPost({
+      text: newPostText.trim(),
+      color: newPostColor,
+      position,
+      authorId: currentUserId
+    });
+
+    // reset composer, close modal, show POST button
+    setNewPostText('');
+    setNewPostColor(colors[0].value);
+    setShowNewPost(false);
+    setHasPostedOnce(true);
   };
 
   const handleDeletePost = (id) => {
@@ -308,8 +374,7 @@ const PegBoard = () => {
 
   return (
       <div className="w-full h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 overflow-hidden relative">
-
-        {/* Initial Post-it (center screen when user arrives) */}
+        {/* Initial Post-it editor */}
         {showNewPost && (
             <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4">
               <div className="flex items-center justify-center">
@@ -321,12 +386,14 @@ const PegBoard = () => {
                     onPost={handlePost}
                     isEditing={true}
                     isInitial={!hasPostedOnce}
+                    scale={scale}
+                    currentUserId={currentUserId}
                 />
               </div>
             </div>
         )}
 
-        {/* Selected Post Modal (for viewing) */}
+        {/* Selected Post Modal (read-only view) */}
         {selectedPost && (
             <div
                 className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
@@ -337,13 +404,14 @@ const PegBoard = () => {
                     text={selectedPost.text}
                     color={selectedPost.color}
                     isEditing={false}
-                    showColorPicker={false}
+                    scale={scale}
+                    currentUserId={currentUserId}
                 />
               </div>
             </div>
         )}
 
-        {/* Scrollable Peg Board */}
+        {/* Scrollable Board (scaled) */}
         <div
             className="board-scroll-container w-full h-full overflow-auto"
             style={{
@@ -352,9 +420,9 @@ const PegBoard = () => {
             }}
         >
           <div
-              className="relative"
+              className="board-inner relative"
               style={{
-                width: '4000px', // Large fixed board size
+                width: '4000px',
                 height: '3000px',
                 backgroundImage: `
               radial-gradient(circle at 25% 25%, #8B4513 2px, transparent 2px),
@@ -365,7 +433,7 @@ const PegBoard = () => {
                 backgroundSize: '60px 60px'
               }}
           >
-            {/* Cork board background layer */}
+            {/* Cork board subtle overlay */}
             <div
                 className="absolute inset-0"
                 style={{
@@ -393,12 +461,14 @@ const PegBoard = () => {
                     onMove={(newPosition) => handleMovePost(post.id, newPosition)}
                     onClick={() => setSelectedPost(post)}
                     authorId={post.authorId}
+                    scale={scale}
+                    currentUserId={currentUserId}
                 />
             ))}
           </div>
         </div>
 
-        {/* Floating Post Button (only show after first post) */}
+        {/* Floating Post Button */}
         {hasPostedOnce && !showNewPost && (
             <button
                 className="fixed bottom-8 right-8 bg-blue-500 text-white p-4 rounded-full shadow-xl hover:bg-blue-600 transition-all duration-200 hover:scale-110 z-40 font-bold text-lg"
@@ -409,25 +479,27 @@ const PegBoard = () => {
             </button>
         )}
 
-        {/* Zoom controls (bottom left) */}
+        {/* Zoom controls */}
         {hasPostedOnce && (
             <div className="fixed bottom-8 left-8 flex flex-col space-y-3 z-40">
               <button
                   className="bg-white bg-opacity-90 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-lg"
-                  onClick={() => setScale(Math.min(2, scale * 1.2))}
+                  onClick={() => setScale((s) => Math.min(2, s * 1.2))}
+                  aria-label="Zoom in"
               >
                 +
               </button>
               <button
-                  className="bg-white bg-opacity-90 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-S"
-                  onClick={() => setScale(Math.max(0.5, scale / 1.2))}
+                  className="bg-white bg-opacity-90 text-gray-700 p-3 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200 font-bold text-lg"
+                  onClick={() => setScale((s) => Math.max(0.5, s / 1.2))}
+                  aria-label="Zoom out"
               >
                 −
               </button>
             </div>
         )}
 
-        {/* Success message for collaboration */}
+        {/* Collaboration badge */}
         {hasPostedOnce && (
             <div className="fixed top-4 right-4 bg-green-100 border-l-4 border-green-500 p-3 rounded shadow-lg text-sm max-w-xs z-40">
               <p className="font-semibold text-green-800">🎉 Live Collaboration!</p>
