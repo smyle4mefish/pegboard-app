@@ -269,14 +269,28 @@ const PegBoard = () => {
     const postHeight = 260;
     const maxAttempts = 50;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Generate position in a much larger area (3x screen size)
-      const boardWidth = window.innerWidth * 3;
-      const boardHeight = window.innerHeight * 3;
+    // Calculate the current visible area based on pan and scale
+    const visibleArea = {
+      left: -pan.x / scale,
+      top: -pan.y / scale,
+      right: (-pan.x + window.innerWidth) / scale,
+      bottom: (-pan.y + window.innerHeight) / scale
+    };
 
+    // Expand the search area slightly beyond the visible area
+    const searchPadding = 200;
+    const searchArea = {
+      left: visibleArea.left - searchPadding,
+      top: visibleArea.top - searchPadding,
+      right: visibleArea.right + searchPadding,
+      bottom: visibleArea.bottom + searchPadding
+    };
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Generate position within the visible/nearby area
       const newPosition = {
-        x: Math.random() * (boardWidth - postWidth - margin * 2) + margin - window.innerWidth,
-        y: Math.random() * (boardHeight - postHeight - margin * 2) + margin - window.innerHeight
+        x: Math.random() * (searchArea.right - searchArea.left - postWidth) + searchArea.left,
+        y: Math.random() * (searchArea.bottom - searchArea.top - postHeight) + searchArea.top
       };
 
       // Check if this position overlaps with existing posts
@@ -297,11 +311,10 @@ const PegBoard = () => {
       }
     }
 
-    // If we can't find a non-overlapping position after many attempts,
-    // just return a random position (fallback)
+    // Fallback: if visible area is full, place it in center of current view
     return {
-      x: Math.random() * (window.innerWidth * 2) - window.innerWidth / 2,
-      y: Math.random() * (window.innerHeight * 2) - window.innerHeight / 2
+      x: (visibleArea.left + visibleArea.right) / 2 - postWidth / 2,
+      y: (visibleArea.top + visibleArea.bottom) / 2 - postHeight / 2
     };
   };
 
